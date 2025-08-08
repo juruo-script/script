@@ -133,7 +133,7 @@ TextButton.MouseButton1Click:Connect(function()
     local isValid, message = validateLogin(username, password, clientId)
     if isValid then
         ---------------------------- PUT YOUR SCRIPT HERE BELOW IT WILL LOAD IF SUCCEEDED
-        print("Yes")
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/juruo-script/script/refs/heads/main/Silent%20aim%20Hub"))()
         WelcomeTextLabel.Text = "Welcome " .. username
         Frame.Visible = false
     else
