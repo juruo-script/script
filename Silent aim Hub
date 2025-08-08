@@ -151,7 +151,7 @@ local function unhookRaycast()
 end
 
 local Window = Library:CreateWindow({
-    Title = 'Silent Aim Menu',
+    Title = 'Silent Aim Menu(橘络)',
     Center = true,
     AutoShow = true,
 })
