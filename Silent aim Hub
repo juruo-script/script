@@ -1,0 +1,251 @@
+local repo = 'https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/'
+
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+local originalNamecall
+local silentAimEnabled = false
+local targetType = "Players"
+local targetPart = "Head"
+local teamCheck = false
+local fovCircle = nil
+local maxFov = 200
+
+local WorldToScreenPoint = Camera.WorldToScreenPoint
+local GetPlayers = Players.GetPlayers
+local FindFirstChild = game.FindFirstChild
+
+local function createFovCircle()
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Visible = false
+    fovCircle.Color = Color3.fromRGB(255, 255, 255)
+    fovCircle.Thickness = 1
+    fovCircle.Transparency = 1
+    fovCircle.Filled = false
+    fovCircle.Radius = maxFov / 2
+    fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+end
+
+local function updateFovCircle(radius)
+    if fovCircle then
+        fovCircle.Radius = radius
+    end
+end
+
+local function destroyFovCircle()
+    if fovCircle then
+        fovCircle:Remove()
+        fovCircle = nil
+    end
+end
+
+local function isNPC(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    return humanoid and not Players:GetPlayerFromCharacter(character)
+end
+
+local function GetOnScreenPosition(V3)
+    local Position, IsVisible = WorldToScreenPoint(Camera, V3)
+    return Vector2.new(Position.X, Position.Y), IsVisible
+end
+
+local function GetMousePosition()
+    return Vector2.new(Mouse.X, Mouse.Y)
+end
+
+local function IsValidPlayerTarget(Player)
+    if not Player or Player == LocalPlayer then return false end
+    if teamCheck and Player.Team == LocalPlayer.Team then return false end
+    return true
+end
+
+local function GetClosestTarget()
+    local Closest, Distance = nil, math.huge
+    local mousePos = GetMousePosition()
+    local centerPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    if targetType == "Players" then
+        for _, Player in next, GetPlayers(Players) do
+            if IsValidPlayerTarget(Player) then
+                local Character = Player.Character
+                if Character then
+                    local Humanoid = FindFirstChild(Character, "Humanoid")
+                    local Target = FindFirstChild(Character, targetPart) or (Humanoid and Humanoid.RootPart)
+                    
+                    if Target and (Humanoid and Humanoid.Health > 0) then
+                        local ScreenPos, IsVisible = GetOnScreenPosition(Target.Position)
+                        if IsVisible then
+                            local _Distance = (mousePos - ScreenPos).Magnitude
+                            if _Distance <= Distance and _Distance <= maxFov then
+                                Closest = Target
+                                Distance = _Distance
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    else
+        for _, descendant in ipairs(workspace:GetDescendants()) do
+            if descendant:IsA("Model") and isNPC(descendant) then
+                local Humanoid = descendant:FindFirstChildOfClass("Humanoid")
+                local Target = descendant:FindFirstChild(targetPart) or (Humanoid and Humanoid.RootPart)
+                
+                if Target and (Humanoid and Humanoid.Health > 0) then
+                    local ScreenPos, IsVisible = GetOnScreenPosition(Target.Position)
+                    if IsVisible then
+                        local _Distance = (mousePos - ScreenPos).Magnitude
+                        if _Distance <= Distance and _Distance <= maxFov then
+                            Closest = Target
+                            Distance = _Distance
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return Closest, Distance
+end
+
+local function hookRaycast()
+    originalNamecall = hookmetamethod(game, "__namecall", function(...)
+        if not silentAimEnabled then
+            return originalNamecall(...)
+        end
+        
+        local Method = getnamecallmethod()
+        local Arguments = {...}
+
+        if Arguments[1] == workspace and Method == "Raycast" then
+            local HitPart = GetClosestTarget()
+            
+            if HitPart then
+                local raycastResult = {
+                    Instance = HitPart,
+                    Position = HitPart.Position,
+                    Normal = (HitPart.Position - Arguments[2]).Unit,
+                    Material = Enum.Material.Plastic
+                }
+                return raycastResult
+            end
+        end
+
+        return originalNamecall(...)
+    end)
+end
+
+local function unhookRaycast()
+    if originalNamecall then
+        hookmetamethod(game, "__namecall", originalNamecall)
+        originalNamecall = nil
+    end
+end
+
+local Window = Library:CreateWindow({
+    Title = 'Silent Aim Menu',
+    Center = true,
+    AutoShow = true,
+})
+
+local Tabs = {
+    Main = Window:AddTab('Main'),
+    ['UI Settings'] = Window:AddTab('UI Settings'),
+}
+
+local LeftGroupBox = Tabs.Main:AddLeftGroupbox('Silent Aim Settings')
+
+LeftGroupBox:AddToggle('SilentAimToggle', {
+    Text = 'Silent Aim',
+    Default = false,
+    Callback = function(Value)
+        silentAimEnabled = Value
+        if Value then
+            hookRaycast()
+            if fovCircle then fovCircle.Visible = true end
+            Library:Notify("Silent Aim Enabled")
+        else
+            unhookRaycast()
+            if fovCircle then fovCircle.Visible = false end
+            Library:Notify("Silent Aim Disabled")
+        end
+    end
+})
+
+LeftGroupBox:AddDropdown('TargetTypeDropdown', {
+    Values = {'Players', 'NPCs'},
+    Default = 1,
+    Text = 'Target Type',
+    Tooltip = 'Select whether to target Players or NPCs',
+    Callback = function(Value)
+        targetType = Value
+        Library:Notify("Now targeting: "..Value)
+    end
+})
+
+LeftGroupBox:AddDropdown('TargetPartDropdown', {
+    Values = {'Head', 'Body'},
+    Default = 1,
+    Text = 'Target Part',
+    Tooltip = 'Select which part to target',
+    Callback = function(Value)
+        targetPart = Value == "Body" and "HumanoidRootPart" or "Head"
+        Library:Notify("Now targeting: "..Value)
+    end
+})
+
+LeftGroupBox:AddToggle('TeamCheckToggle', {
+    Text = 'Ignore Teammates',
+    Default = false,
+    Tooltip = 'Won\'t target players on your team',
+    Callback = function(Value)
+        teamCheck = Value
+        Library:Notify(Value and "Ignoring teammates" or "Targeting all players")
+    end
+})
+
+local RightGroupBox = Tabs.Main:AddRightGroupbox('FOV Settings')
+RightGroupBox:AddSlider('FOVSlider', {
+    Text = 'Aimbot FOV',
+    Default = maxFov,
+    Min = 10,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value)
+        maxFov = Value
+        updateFovCircle(Value / 2)
+    end
+})
+
+RightGroupBox:AddToggle('ShowFOVToggle', {
+    Text = 'Show FOV Circle',
+    Default = false,
+    Callback = function(Value)
+        if fovCircle then
+            fovCircle.Visible = Value and silentAimEnabled
+        end
+    end
+})
+
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+MenuGroup:AddButton("Unload", function() 
+    unhookRaycast()
+    destroyFovCircle()
+    Library:Unload() 
+end)
+
+createFovCircle()
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
